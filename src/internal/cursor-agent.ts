@@ -23,6 +23,8 @@ interface SessionState {
   cancelled: boolean;
   resumeId?: string; // cursor session_id to resume
   modeId: "default" | "plan";
+  /** When true, pass --approve-mcps to cursor-agent (use global MCP in headless mode) */
+  approveMcps?: boolean;
   running?: ChildProcess | null;
 }
 
@@ -56,10 +58,14 @@ export class CursorAcpAgent implements Agent {
 
   async newSession(params: NewSessionRequest): Promise<NewSessionResponse> {
     const id = cryptoRandomId();
+    const approveMcps =
+      (params.mcpServers?.length ?? 0) > 0 ||
+      (params as { _meta?: { approveMcps?: boolean } })._meta?.approveMcps === true;
     this.sessions[id] = {
       cwd: params.cwd,
       cancelled: false,
       modeId: "default",
+      approveMcps,
     };
 
     const models: SessionModelState = {
@@ -104,6 +110,11 @@ export class CursorAcpAgent implements Agent {
       "stream-json",
       "--stream-partial-output",
     ];
+
+    if (session.approveMcps) {
+      args.push("--approve-mcps");
+      args.push("--force"); // Auto-approve tool executions (including MCP tool calls) in headless mode
+    }
 
     if (session.resumeId) {
       args.push("--resume", session.resumeId);
